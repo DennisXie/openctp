@@ -1,9 +1,13 @@
 """
 written by DennisXie on 2023-2-18
 """
+import re
 import sys
 import time
+import queue
 import thosttraderapi as api
+
+from typing import Type
 
 
 class UserConfig(object):
@@ -30,6 +34,7 @@ class CTdClient(api.CThostFtdcTraderSpi):
         self.__reqId: int = 0
         self.__ready: bool = False
         self.__today: str = ""
+        self.__queue: queue.Queue = queue.Queue()
 
     @property
     def reqId(self) -> int:
@@ -97,13 +102,25 @@ class CTdClient(api.CThostFtdcTraderSpi):
         else:
             exit(1)
 
-    def querySettlementInfo(self, tradingDay: str):
+    def querySettlementInfo(self, tradingDay: str) -> str:
         print(f"query settlement {self.userConfig}")
         req = api.CThostFtdcQrySettlementInfoField()
         req.BrokerID = self.userConfig.brokerId
         req.TradingDay = tradingDay
         req.InvestorID = self.userConfig.userId
         self.tdapi.ReqQrySettlementInfo(req, self.reqId)
+
+        content: str = ""
+        chunks: list[api.CThostFtdcSettlementInfoField] = []
+        last = False
+        while last:
+            chunk, last = self.__queue.get()
+            chunks.append(chunk)
+
+        chunks.sort(key=lambda chunk: chunk.SequenceNo)
+        for chunk in chunks:
+            content += chunk.Content
+        return content
 
     def OnRspQrySettlementInfo(self, pSettlementInfo: api.CThostFtdcSettlementInfoField,
                                pRspInfo: api.CThostFtdcRspInfoField, nRequestID: int, bIsLast: bool):
@@ -112,8 +129,9 @@ class CTdClient(api.CThostFtdcTraderSpi):
 
         if pSettlementInfo is not None:
             print(pSettlementInfo.Content)
+            self.__queue.put_nowait((pSettlementInfo, bIsLast))
         else:
-            print("empty settlement content")
+            print(f"empty settlement content, last={bIsLast}")
 
     def settlementConfirm(self):
         # TODO: 是否要干掉confirm
@@ -140,13 +158,65 @@ class CTdClient(api.CThostFtdcTraderSpi):
               f"ProductID={pInstrument.ProductID}, ExpireDate={pInstrument.ExpireDate}")
 
 
+class SectionHandler(object):
+
+    TITLE = ""
+    regs: list[re.Pattern] = []
+
+    @classmethod
+    def parse(cls, contents: list[str]):
+        """不能处理的行直接略过"""
+        pass
+
+
+class HeaderHandler(SectionHandler):
+    pass
+
+
+class SettlementParser(object):
+
+    HEADER = 0
+    MTM = 1
+    POSITIONS_DETAILS = 2
+    POSITIONS = 3
+
+    def __init__(self, content: str):
+        self._content = content
+        self._content_lines = content.split("\r\n")
+        self._status = SettlementParser.HEADER
+        self._parsed = dict()
+        self._handlers: dict[str, Type[SectionHandler]] = {}
+        self._sections: dict[str, (int, int)] = {}
+
+    def parse(self):
+        self._split_to_section()
+        for title, section in self._sections.items():
+            start, end = section
+            self._handlers[title].parse(self._content_lines[start:end])
+
+    def _split_to_section(self):
+        section_start = 0
+        current_section = None
+        checked = {
+            current_section: 1
+        }
+        for i in range(len(self._content_lines)):
+            for title in self._handlers.keys():
+                if title not in checked and self._content_lines[i].find(title):
+                    self._sections[current_section] = (section_start, i)
+                    checked[title] = 1
+                    current_section = title
+                    section_start = i
+                    break
+
+
 if __name__ == "__main__":
     front = "tcp://180.168.146.187:10130"
     # brokerId, userId, password, appId, authCode
     user = UserConfig(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
     client = CTdClient(user, front)
     client.connect()
-    client.querySettlementInfo("20230217")
+    print(client.querySettlementInfo("20230216"))
     i = 0
     while i < 10:
         time.sleep(1)
