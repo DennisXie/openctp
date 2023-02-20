@@ -113,13 +113,9 @@ class CTdClient(api.CThostFtdcTraderSpi):
         content: str = ""
         chunks: list[api.CThostFtdcSettlementInfoField] = []
         last = False
-        while last:
+        while not last:
             chunk, last = self.__queue.get()
-            chunks.append(chunk)
-
-        chunks.sort(key=lambda chunk: chunk.SequenceNo)
-        for chunk in chunks:
-            content += chunk.Content
+            content = content + chunk
         return content
 
     def OnRspQrySettlementInfo(self, pSettlementInfo: api.CThostFtdcSettlementInfoField,
@@ -128,8 +124,7 @@ class CTdClient(api.CThostFtdcTraderSpi):
             print(f"query settlement failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
         if pSettlementInfo is not None:
-            print(pSettlementInfo.Content)
-            self.__queue.put_nowait((pSettlementInfo, bIsLast))
+            self.__queue.put_nowait((str(pSettlementInfo.Content), bIsLast))
         else:
             print(f"empty settlement content, last={bIsLast}")
 
@@ -217,7 +212,3 @@ if __name__ == "__main__":
     client = CTdClient(user, front)
     client.connect()
     print(client.querySettlementInfo("20230215"))
-    i = 0
-    while i < 10:
-        time.sleep(1)
-        i += 1
