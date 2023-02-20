@@ -28,7 +28,7 @@ class UserConfig(object):
 class CTdClient(api.CThostFtdcTraderSpi):
     def __init__(self, userConfig: UserConfig, front: str):
         super().__init__()
-        self.tdapi: api.CThostFtdcTraderApi = api.CThostFtdcTraderApi.CreateFtdcTraderApi(f"connect\\{userConfig.userId}")
+        self.tdapi: api.CThostFtdcTraderApi = api.CThostFtdcTraderApi.CreateFtdcTraderApi(userConfig.userId)
         self.userConfig = userConfig
         self.front: str = front
         self.__reqId: int = 0
@@ -211,12 +211,12 @@ class SettlementParser(object):
 
 
 if __name__ == "__main__":
-    front = "tcp://180.168.146.187:10130"
+    front = "tcp://180.168.146.187:10201"
     # brokerId, userId, password, appId, authCode
     user = UserConfig(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
     client = CTdClient(user, front)
     client.connect()
-    print(client.querySettlementInfo("20230216"))
+    print(client.querySettlementInfo("20230215"))
     i = 0
     while i < 10:
         time.sleep(1)
