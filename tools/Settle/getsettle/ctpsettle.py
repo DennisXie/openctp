@@ -156,16 +156,204 @@ class CTdClient(api.CThostFtdcTraderSpi):
 class SectionHandler(object):
 
     TITLE = ""
-    regs: list[re.Pattern] = []
 
-    @classmethod
-    def parse(cls, contents: list[str]):
+    def parse(self, contents: list[str]):
         """不能处理的行直接略过"""
         pass
 
 
-class HeaderHandler(SectionHandler):
-    pass
+class SummaryHandler(SectionHandler):
+
+    TITLE = "交易结算单"
+
+
+class TableStatus(object):
+    NONE = "None"
+    HEADER = "header"
+    DETAILS = "details"
+    TOTAL = "total"
+    COMMENT = "comment"
+
+
+class TableHandler(SectionHandler):
+
+    TITLE = ""
+
+    split_line = "------------------"
+    status = [TableStatus.NONE, TableStatus.HEADER, TableStatus.DETAILS, TableStatus.TOTAL, TableStatus.COMMENT]
+    handlers = {}
+    result = {}
+
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def parse(self, contents: list[str]) -> dict[str, any]:
+        currentStatusIdx = 0
+        currentStatus = self.status[currentStatusIdx]
+        for i in range(len(contents)):
+            if contents[i].startswith(self.split_line):
+                currentStatusIdx += 1
+                currentStatus = self.status[currentStatusIdx]
+                continue
+            elif currentStatus in self.handlers:
+                self.handlers[currentStatus](contents[i])
+        return self.result
+
+    def parse_header(self, line: str):
+        pass
+
+    def parse_detail(self, line: str) -> dict[str, any]:
+        pass
+
+    def parse_total(self, line: str) -> dict[str, any]:
+        pass
+
+    def parse_comment(self, line: str) -> dict[str, str]:
+        pass
+
+
+class TransactionsHandler(TableHandler):
+
+    TITLE = "成交记录"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.handlers = {
+            TableStatus.DETAILS: self.parse_detail,
+        }
+        self.result = {
+            "details": []
+        }
+    
+    def parse_detail(self, line: str) -> dict[str, any]:
+        compactLine = line.replace(" ", "")[1:-1]
+        cells = compactLine.split("|")
+        self.result["details"].append({
+            "Date": cells[0],
+            "InvestUnit": cells[1],
+            "Exchange": cells[2],
+            "TradingCode": cells[3],
+            "Product": cells[4],
+            "Instrument": cells[5],
+            "B/S": cells[6],
+            "S/H": cells[7],
+            "Price": cells[8],
+            "Lots": cells[9],
+            "Turnover": cells[10],
+            "O/C": cells[11],
+            "Fee": cells[12],
+            "RealizedP/L": cells[13],
+            "PremiumReceived/Paid": cells[14],
+            "TransactionNo": cells[15],
+            "AccountID": cells[16]
+        })
+
+
+class PositionsClosedHandler(TableHandler):
+
+    TITLE = "平仓明细"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.handlers = {
+            TableStatus.DETAILS: self.parse_detail,
+        }
+        self.result = {
+            "details": []
+        }
+    
+    def parse_detail(self, line: str) -> dict[str, any]:
+        compactLine = line.replace(" ", "")[1:-1]
+        cells = compactLine.split("|")
+        self.result["details"].append({
+            "Date": cells[0],
+            "InvestUnit": cells[1],
+            "Exchange": cells[2],
+            "TradingCode": cells[3],
+            "Product": cells[4],
+            "Instrument": cells[5],
+            "OpenDate": cells[6],
+            "S/H": cells[7],
+            "B/S": cells[8],
+            "Lots": cells[9],
+            "PosOpenPrice": cells[10],
+            "PrevSettle": cells[11],
+            "TransPrice": cells[12],
+            "RealizedP/L": cells[13],
+            "PremiumReceived/Paid": cells[14],
+            "AccountID": cells[15]
+        })
+
+class PositionsDetailHandler(TableHandler):
+
+    TITLE = "持仓明细"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.handlers = {
+            TableStatus.DETAILS: self.parse_detail,
+        }
+        self.result = {
+            "details": []
+        }
+    
+    def parse_detail(self, line: str) -> dict[str, any]:
+        compactLine = line.replace(" ", "")[1:-1]
+        cells = compactLine.split("|")
+        self.result["details"].append({
+            "InvestUnit": cells[0],
+            "Exchange": cells[1],
+            "TradingCode": cells[2],
+            "Product": cells[3],
+            "Instrument": cells[4],
+            "OpenDate": cells[5],
+            "S/H": cells[6],
+            "B/S": cells[7],
+            "Position": cells[8],
+            "PosOpenPrice": cells[9],
+            "PrevSettle": cells[10],
+            "SettlementPrice": cells[11],
+            "AccumP/L": cells[12],
+            "MTMP/L": cells[13],
+            "Margin": cells[14],
+            "MarketValueOptions": cells[15],
+            "AccountID": cells[16]
+        })
+
+class PositionsHandler(TableHandler):
+
+    TITLE = "持仓汇总"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.handlers = {
+            TableStatus.DETAILS: self.parse_detail,
+        }
+        self.result = {
+            "details": []
+        }
+    
+    def parse_detail(self, line: str) -> dict[str, any]:
+        compactLine = line.replace(" ", "")[1:-1]
+        cells = compactLine.split("|")
+        self.result["details"].append({
+            "InvestUnit": cells[0],
+            "TradingCode": cells[1],
+            "Product": cells[2],
+            "Instrument": cells[3],
+            "LongPos": cells[4],
+            "AvgBuyPrice": cells[5],
+            "ShortPos": cells[6],
+            "AvgCellPrice": cells[7],
+            "PrevSettle": cells[8],
+            "SettleToday": cells[9],
+            "MTMP/L": cells[10],
+            "MarginOccupied": cells[11],
+            "S/H": cells[12],
+            "MarketValue(Long)": cells[13],
+            "MarketValue(Short)": cells[14],
+            "AccountID": cells[15],
+        })
 
 
 class SettlementParser(object):
@@ -180,7 +368,7 @@ class SettlementParser(object):
         self._content_lines = content.split("\r\n")
         self._status = SettlementParser.HEADER
         self._parsed = dict()
-        self._handlers: dict[str, Type[SectionHandler]] = {}
+        self._handlers: dict[str, SectionHandler] = {}
         self._sections: dict[str, (int, int)] = {}
 
     def parse(self):
@@ -197,7 +385,7 @@ class SettlementParser(object):
         }
         for i in range(len(self._content_lines)):
             for title in self._handlers.keys():
-                if title not in checked and self._content_lines[i].find(title):
+                if title not in checked and self._content_lines[i].find(title) >= 0:
                     self._sections[current_section] = (section_start, i)
                     checked[title] = 1
                     current_section = title
