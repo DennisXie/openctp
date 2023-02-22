@@ -7,7 +7,8 @@ import time
 import queue
 import thosttraderapi as api
 
-from typing import Type
+def _print(*args, **kwargs):
+    print(*args, **kwargs)
 
 
 class UserConfig(object):
@@ -56,12 +57,12 @@ class CTdClient(api.CThostFtdcTraderSpi):
 
     def OnFrontConnected(self):
         """前置连接成功"""
-        print("OnFrontConnected")
+        _print("OnFrontConnected")
         self.authenticate()
 
     def OnFrontDisconnected(self, nReason):
         "前置断开连接"
-        print(f"Front disconnect, error_code={nReason}")
+        _print(f"Front disconnect, error_code={nReason}")
 
     def authenticate(self):
         req = api.CThostFtdcReqAuthenticateField()
@@ -75,7 +76,7 @@ class CTdClient(api.CThostFtdcTraderSpi):
                           pRspInfo: api.CThostFtdcRspInfoField, nRequestID: int, bIsLast: bool):
         """客户端认证响应"""
         if pRspInfo is not None:
-            print(f"authenticate failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
+            _print(f"authenticate failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
         if pRspInfo is None or pRspInfo.ErrorID == 0:
             self.login()
@@ -94,7 +95,7 @@ class CTdClient(api.CThostFtdcTraderSpi):
                        nRequestID: int, bIsLast: bool):
         """登录响应"""
         if pRspInfo is not None:
-            print(f"login failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
+            _print(f"login failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
         if pRspInfo is None or pRspInfo.ErrorID == 0:
             self.__ready = True
@@ -103,7 +104,7 @@ class CTdClient(api.CThostFtdcTraderSpi):
             exit(1)
 
     def querySettlementInfo(self, tradingDay: str) -> str:
-        print(f"query settlement {self.userConfig}")
+        _print(f"query settlement {self.userConfig}")
         req = api.CThostFtdcQrySettlementInfoField()
         req.BrokerID = self.userConfig.brokerId
         req.TradingDay = tradingDay
@@ -121,36 +122,12 @@ class CTdClient(api.CThostFtdcTraderSpi):
     def OnRspQrySettlementInfo(self, pSettlementInfo: api.CThostFtdcSettlementInfoField,
                                pRspInfo: api.CThostFtdcRspInfoField, nRequestID: int, bIsLast: bool):
         if pRspInfo is not None:
-            print(f"query settlement failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
+            _print(f"query settlement failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
         if pSettlementInfo is not None:
             self.__queue.put_nowait((str(pSettlementInfo.Content), bIsLast))
         else:
-            print(f"empty settlement content, last={bIsLast}")
-
-    def settlementConfirm(self):
-        # TODO: 是否要干掉confirm
-        req = api.CThostFtdcSettlementInfoConfirmField()
-        req.BrokerID = self.userConfig.brokerId
-        req.InvestorID = self.userConfig.userId
-        self.tdapi.ReqSettlementInfoConfirm(req, self.reqId)
-
-    def OnRspSettlementInfoConfirm(self, pSettlementInfoConfirm, pRspInfo, nRequestID, bIsLast):
-        if pRspInfo is not None:
-            print(f"confirm failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
-        else:
-            print("confirm success")
-            self.__ready = True
-
-    def OnRspQryInstrument(self, pInstrument: api.CThostFtdcInstrumentField,
-                           pRspInfo: api.CThostFtdcRspInfoField, nRequestID: int, bIsLast: bool):
-        """ 查询合约应答 """
-        if pRspInfo is not None:
-            print(f"OnRspQryInstrument: ErrorID={pRspInfo.ErrorID}, ErrorMsg={pRspInfo.ErrorMsg}")
-
-        print(f"OnRspQryInstrument: InstrumentID={pInstrument.InstrumentID}, "
-              f"ExchangeID={pInstrument.ExchangeID}, PriceTick={pInstrument.PriceTick}, "
-              f"ProductID={pInstrument.ProductID}, ExpireDate={pInstrument.ExpireDate}")
+            _print(f"empty settlement content, last={bIsLast}")
 
 
 class SectionHandler(object):
@@ -162,10 +139,52 @@ class SectionHandler(object):
         pass
 
 
-class SummaryHandler(SectionHandler):
+class SettlementStatementHandler(SectionHandler):
 
     TITLE = "交易结算单"
 
+    CLIENT_ID_KEY = "ClientID"
+    DATE_KEY = "Date"
+    DETAILS_KEY = "Details"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.client_id_pattern: re.Pattern = re.compile(r"Client ID：\s*(?P<ClientID>\d+)")
+        self.date_pattern: re.Pattern = re.compile(r"Date：\s*(?P<Date>\d+)")
+        # 匹配 1-n个(英文字母、空白符、/)：0-n个(空白符)1-n个(数字).1-n个(数字)0-1个(%)
+        self.detail_pattern: re.Pattern = re.compile(r"[a-zA-Z\s/]+：\s*\d+\.\d+%?")
+        self.result = {
+            self.CLIENT_ID_KEY: None,
+            self.DATE_KEY: None,
+            self.DETAILS_KEY: {}
+        }
+    
+    def parse(self, contents: list[str]):
+        for line in contents:
+            if not self.result[self.CLIENT_ID_KEY]:
+                self.parse_client_id(line)
+            elif not self.result[self.DATE_KEY]:
+                self.parse_date(line)
+            else:
+                self.parse_details(line)
+
+    def parse_client_id(self, line: str):
+        match = self.client_id_pattern.search(line)
+        if match:
+            self.result[self.CLIENT_ID_KEY] = match.group(self.CLIENT_ID_KEY)
+    
+    def parse_date(self, line: str):
+        match = self.date_pattern.search(line)
+        if match:
+            self.result[self.DATE_KEY] = match.group(self.DATE_KEY)
+
+    def parse_details(self, line: str):
+        matches: list[str] = self.detail_pattern.findall(line)
+        if matches:
+            for match in matches:
+                compactMatch = match.replace(" ", "")    # Aaa Bbb:  95.2 -> AaaBbb:95.2
+                kv = compactMatch.split("：")            # AaaBbb:95.2 -> ['AaaBbb', '95.2']
+                self.result[self.DETAILS_KEY][kv[0]] = kv[1]
 
 class TableStatus(object):
     NONE = "None"
@@ -183,6 +202,8 @@ class TableHandler(SectionHandler):
     status = [TableStatus.NONE, TableStatus.HEADER, TableStatus.DETAILS, TableStatus.TOTAL, TableStatus.COMMENT]
     handlers = {}
     result = {}
+
+    DETAILS_KEY = "Details"
 
     def __init__(self) -> None:
         super().__init__()
@@ -222,13 +243,13 @@ class TransactionsHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            "details": []
+            self.DETAILS_KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result["details"].append({
+        self.result[self.DETAILS_KEY].append({
             "Date": cells[0],
             "InvestUnit": cells[1],
             "Exchange": cells[2],
@@ -259,13 +280,13 @@ class PositionsClosedHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            "details": []
+            self.DETAILS_KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result["details"].append({
+        self.result[self.DETAILS_KEY].append({
             "Date": cells[0],
             "InvestUnit": cells[1],
             "Exchange": cells[2],
@@ -294,13 +315,13 @@ class PositionsDetailHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            "details": []
+            self.DETAILS_KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result["details"].append({
+        self.result[self.DETAILS_KEY].append({
             "InvestUnit": cells[0],
             "Exchange": cells[1],
             "TradingCode": cells[2],
@@ -330,13 +351,13 @@ class PositionsHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            "details": []
+            self.DETAILS_KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result["details"].append({
+        self.result[self.DETAILS_KEY].append({
             "InvestUnit": cells[0],
             "TradingCode": cells[1],
             "Product": cells[2],
@@ -368,7 +389,13 @@ class SettlementParser(object):
         self._content_lines = content.split("\r\n")
         self._status = SettlementParser.HEADER
         self._parsed = dict()
-        self._handlers: dict[str, SectionHandler] = {}
+        self._handlers: dict[str, SectionHandler] = {
+            SettlementStatementHandler.TITLE: SettlementStatementHandler(),
+            TransactionsHandler.TITLE: TransactionsHandler(),
+            PositionsClosedHandler.TITLE: PositionsClosedHandler(),
+            PositionsDetailHandler.TITLE: PositionsDetailHandler(),
+            PositionsHandler.TITLE: PositionsHandler()
+        }
         self._sections: dict[str, (int, int)] = {}
 
     def parse(self):
