@@ -152,7 +152,7 @@ class SettlementStatementHandler(SectionHandler):
         self.client_id_pattern: re.Pattern = re.compile(r"Client ID：\s*(?P<ClientID>\d+)")
         self.date_pattern: re.Pattern = re.compile(r"Date：\s*(?P<Date>\d+)")
         # 匹配 1-n个(英文字母、空白符、/)：0-n个(空白符)1-n个(数字).1-n个(数字)0-1个(%)
-        self.detail_pattern: re.Pattern = re.compile(r"[a-zA-Z\s/]+：\s*\d+\.\d+%?")
+        self.detail_pattern: re.Pattern = re.compile(r"[a-zA-Z\s/]+：\s*\d+\.\d+")
         self.result = {
             self.CLIENT_ID_KEY: None,
             self.DATE_KEY: None,
@@ -185,7 +185,7 @@ class SettlementStatementHandler(SectionHandler):
             for match in matches:
                 compactMatch = match.replace(" ", "")    # Aaa Bbb:  95.2 -> AaaBbb:95.2
                 kv = compactMatch.split("：")            # AaaBbb:95.2 -> ['AaaBbb', '95.2']
-                self.result[self.DETAILS_KEY][kv[0]] = kv[1]
+                self.result[self.DETAILS_KEY][kv[0]] = float(kv[1])
 
 class TableStatus(object):
     NONE = "None"
@@ -264,13 +264,13 @@ class TransactionsHandler(TableHandler):
             "Instrument": cells[5],
             "B/S": cells[6],
             "S/H": cells[7],
-            "Price": cells[8],
-            "Lots": cells[9],
-            "Turnover": cells[10],
+            "Price": float(cells[8]),
+            "Lots": int(cells[9]),
+            "Turnover": float(cells[10]),
             "O/C": cells[11],
-            "Fee": cells[12],
-            "RealizedP/L": cells[13],
-            "PremiumReceived/Paid": cells[14],
+            "Fee": float(cells[12]),
+            "RealizedP/L": float(cells[13]),
+            "PremiumReceived/Paid": float(cells[14]),
             "TransactionNo": cells[15],
             "AccountID": cells[16]
         })
@@ -303,12 +303,12 @@ class PositionsClosedHandler(TableHandler):
             "OpenDate": cells[6],
             "S/H": cells[7],
             "B/S": cells[8],
-            "Lots": cells[9],
-            "PosOpenPrice": cells[10],
-            "PrevSettle": cells[11],
-            "TransPrice": cells[12],
-            "RealizedP/L": cells[13],
-            "PremiumReceived/Paid": cells[14],
+            "Lots": int(cells[9]),
+            "PosOpenPrice": float(cells[10]),
+            "PrevSettle": float(cells[11]),
+            "TransPrice": float(cells[12]),
+            "RealizedP/L": float(cells[13]),
+            "PremiumReceived/Paid": float(cells[14]),
             "AccountID": cells[15]
         })
 
@@ -338,14 +338,14 @@ class PositionsDetailHandler(TableHandler):
             "OpenDate": cells[5],
             "S/H": cells[6],
             "B/S": cells[7],
-            "Position": cells[8],
-            "PosOpenPrice": cells[9],
-            "PrevSettle": cells[10],
-            "SettlementPrice": cells[11],
-            "AccumP/L": cells[12],
-            "MTMP/L": cells[13],
-            "Margin": cells[14],
-            "MarketValueOptions": cells[15],
+            "Position": int(cells[8]),
+            "PosOpenPrice": float(cells[9]),
+            "PrevSettle": float(cells[10]),
+            "SettlementPrice": float(cells[11]),
+            "AccumP/L": float(cells[12]),
+            "MTMP/L": float(cells[13]),
+            "Margin": float(cells[14]),
+            "MarketValueOptions": float(cells[15]),
             "AccountID": cells[16]
         })
 
@@ -371,17 +371,17 @@ class PositionsHandler(TableHandler):
             "TradingCode": cells[1],
             "Product": cells[2],
             "Instrument": cells[3],
-            "LongPos": cells[4],
-            "AvgBuyPrice": cells[5],
-            "ShortPos": cells[6],
-            "AvgCellPrice": cells[7],
-            "PrevSettle": cells[8],
-            "SettleToday": cells[9],
-            "MTMP/L": cells[10],
-            "MarginOccupied": cells[11],
+            "LongPos": int(cells[4]),
+            "AvgBuyPrice": float(cells[5]),
+            "ShortPos": int(cells[6]),
+            "AvgCellPrice": float(cells[7]),
+            "PrevSettle": float(cells[8]),
+            "SettleToday": float(cells[9]),
+            "MTMP/L": float(cells[10]),
+            "MarginOccupied": float(cells[11]),
             "S/H": cells[12],
-            "MarketValue(Long)": cells[13],
-            "MarketValue(Short)": cells[14],
+            "MarketValue(Long)": float(cells[13]),
+            "MarketValue(Short)": float(cells[14]),
             "AccountID": cells[15],
         })
 
@@ -430,6 +430,9 @@ class SettlementParser(object):
                     current_section = title
                     section_start = i
                     break
+        else:
+            if section_start < len(self._content_lines) and current_section not in self._sections:
+                self._sections[current_section] = (section_start, len(self._content_lines))
 
 
 if __name__ == "__main__":
