@@ -145,7 +145,7 @@ class SettlementStatementHandler(SectionHandler):
 
     CLIENT_ID_KEY = "ClientID"
     DATE_KEY = "Date"
-    DETAILS_KEY = "Details"
+    DETAILS_KEY = "SettlementStatement"
 
     def __init__(self) -> None:
         super().__init__()
@@ -167,6 +167,7 @@ class SettlementStatementHandler(SectionHandler):
                 self.parse_date(line)
             else:
                 self.parse_details(line)
+        return self.result
 
     def parse_client_id(self, line: str):
         match = self.client_id_pattern.search(line)
@@ -197,13 +198,17 @@ class TableStatus(object):
 class TableHandler(SectionHandler):
 
     TITLE = ""
+    KEY = "Table"
 
     split_line = "------------------"
     status = [TableStatus.NONE, TableStatus.HEADER, TableStatus.DETAILS, TableStatus.TOTAL, TableStatus.COMMENT]
     handlers = {}
     result = {}
 
+    HEADER_KEY = "Headers"
     DETAILS_KEY = "Details"
+    TOTAL_KEY = "Total"
+    COMMENT_KEY = "Comment"
 
     def __init__(self) -> None:
         super().__init__()
@@ -236,6 +241,7 @@ class TableHandler(SectionHandler):
 class TransactionsHandler(TableHandler):
 
     TITLE = "成交记录"
+    KEY = "Transactions"
 
     def __init__(self) -> None:
         super().__init__()
@@ -243,13 +249,13 @@ class TransactionsHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            self.DETAILS_KEY: []
+            self.KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result[self.DETAILS_KEY].append({
+        self.result[self.KEY].append({
             "Date": cells[0],
             "InvestUnit": cells[1],
             "Exchange": cells[2],
@@ -273,6 +279,7 @@ class TransactionsHandler(TableHandler):
 class PositionsClosedHandler(TableHandler):
 
     TITLE = "平仓明细"
+    KEY = "PositionsClosed"
 
     def __init__(self) -> None:
         super().__init__()
@@ -280,13 +287,13 @@ class PositionsClosedHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            self.DETAILS_KEY: []
+            self.KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result[self.DETAILS_KEY].append({
+        self.result[self.KEY].append({
             "Date": cells[0],
             "InvestUnit": cells[1],
             "Exchange": cells[2],
@@ -308,6 +315,7 @@ class PositionsClosedHandler(TableHandler):
 class PositionsDetailHandler(TableHandler):
 
     TITLE = "持仓明细"
+    KEY = "PositionsDetail"
 
     def __init__(self) -> None:
         super().__init__()
@@ -315,13 +323,13 @@ class PositionsDetailHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            self.DETAILS_KEY: []
+            self.KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result[self.DETAILS_KEY].append({
+        self.result[self.KEY].append({
             "InvestUnit": cells[0],
             "Exchange": cells[1],
             "TradingCode": cells[2],
@@ -344,6 +352,7 @@ class PositionsDetailHandler(TableHandler):
 class PositionsHandler(TableHandler):
 
     TITLE = "持仓汇总"
+    KEY = "Positions"
 
     def __init__(self) -> None:
         super().__init__()
@@ -351,13 +360,13 @@ class PositionsHandler(TableHandler):
             TableStatus.DETAILS: self.parse_detail,
         }
         self.result = {
-            self.DETAILS_KEY: []
+            self.KEY: []
         }
     
     def parse_detail(self, line: str) -> dict[str, any]:
         compactLine = line.replace(" ", "")[1:-1]
         cells = compactLine.split("|")
-        self.result[self.DETAILS_KEY].append({
+        self.result[self.KEY].append({
             "InvestUnit": cells[0],
             "TradingCode": cells[1],
             "Product": cells[2],
@@ -384,9 +393,9 @@ class SettlementParser(object):
     POSITIONS_DETAILS = 2
     POSITIONS = 3
 
-    def __init__(self, content: str):
+    def __init__(self, content: str, line_spliter="\r\n"):
         self._content = content
-        self._content_lines = content.split("\r\n")
+        self._content_lines = content.split(line_spliter)
         self._status = SettlementParser.HEADER
         self._parsed = dict()
         self._handlers: dict[str, SectionHandler] = {
@@ -402,7 +411,10 @@ class SettlementParser(object):
         self._split_to_section()
         for title, section in self._sections.items():
             start, end = section
-            self._handlers[title].parse(self._content_lines[start:end])
+            if title in self._handlers:
+                result = self._handlers[title].parse(self._content_lines[start:end])
+                self._parsed.update(result)
+        return self._parsed
 
     def _split_to_section(self):
         section_start = 0
