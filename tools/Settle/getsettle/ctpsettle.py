@@ -1,14 +1,20 @@
 """
 written by DennisXie on 2023-2-18
 """
+import argparse
+import datetime
+import os
 import re
-import sys
+import json
 import time
 import queue
 import thosttraderapi as api
 
+verbose = False
+
 def _print(*args, **kwargs):
-    print(*args, **kwargs)
+    if verbose:
+        print(*args, **kwargs)
 
 
 class UserConfig(object):
@@ -56,12 +62,12 @@ class CTdClient(api.CThostFtdcTraderSpi):
             time.sleep(0.2)
 
     def OnFrontConnected(self):
-        """前置连接成功"""
+        """called when connect success"""
         _print("OnFrontConnected")
         self.authenticate()
 
     def OnFrontDisconnected(self, nReason):
-        "前置断开连接"
+        """called when connection broken"""
         _print(f"Front disconnect, error_code={nReason}")
 
     def authenticate(self):
@@ -70,11 +76,11 @@ class CTdClient(api.CThostFtdcTraderSpi):
         req.UserID = self.userConfig.userId
         req.AppID = self.userConfig.appId
         req.AuthCode = self.userConfig.authCode
-        self.tdapi.ReqAuthenticate(req, 0)
+        self.tdapi.ReqAuthenticate(req, self.reqId)
 
     def OnRspAuthenticate(self, pRspAuthenticateField: api.CThostFtdcRspAuthenticateField,
                           pRspInfo: api.CThostFtdcRspInfoField, nRequestID: int, bIsLast: bool):
-        """客户端认证响应"""
+        """called when authenticate success"""
         if pRspInfo is not None:
             _print(f"authenticate failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
@@ -89,11 +95,11 @@ class CTdClient(api.CThostFtdcTraderSpi):
         req.UserID = self.userConfig.userId
         req.Password = self.userConfig.password
         req.UserProductInfo = "openctp"
-        self.tdapi.ReqUserLogin(req, 0)
+        self.tdapi.ReqUserLogin(req, self.reqId)
 
     def OnRspUserLogin(self, pRspUserLogin: api.CThostFtdcRspUserLoginField, pRspInfo: api.CThostFtdcRspInfoField,
                        nRequestID: int, bIsLast: bool):
-        """登录响应"""
+        """called when login responds"""
         if pRspInfo is not None:
             _print(f"login failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
@@ -436,9 +442,43 @@ class SettlementParser(object):
 
 
 if __name__ == "__main__":
-    front = "tcp://180.168.146.187:10201"
+    parser = argparse.ArgumentParser(
+        prog="ctpsettle",
+        description="Query ctp settlement info",
+    )
+    parser.add_argument("-a", dest="front", required=False, help="Trade server address, can also be specified by CTP_TRADE_FRONT envrionment variable")
+    parser.add_argument("-b", dest="brokerId", required=False, help="Broker ID, default 9999 can also be specified by CTP_BROKER environment variable")
+    parser.add_argument("-u", dest="userId", required=False, help="User ID, can also be specified by CTP_USER environment variable")
+    parser.add_argument("-p", dest="password", required=False, help="Password, can also be specified by CTP_PASSWORD")
+    parser.add_argument("--appid", dest="appId", required=False, help="App ID, default simnow_client_test, can also be specified by CTP_APP_ID")
+    parser.add_argument("--authcode", dest="authCode", required=False, help="Auth Code, default 0000000000000000, can also be specified by  CTP_AUTH_CODE")
+    parser.add_argument("-d", "--date", dest="date", required=False, help="Date, yyyymmdd, default yesterday")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", required=False, help="Print more detailed log")
+    parser.add_argument("--raw", dest="raw", action="store_true", default=False, required=False, help="Print raw settlement info instead of json format")
+
+    args = parser.parse_args()
     # brokerId, userId, password, appId, authCode
-    user = UserConfig(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+    brokerId = args.brokerId or os.getenv('CTP_BROKER', '9999')
+    userId = args.userId or os.getenv('CTP_USER')
+    password = args.password or os.getenv('CTP_PASSWORD')
+    appId = args.appId or os.getenv('CTP_APP_ID', 'simnow_client_test')
+    authCode = args.authCode or os.getenv('CTP_AUTH_CODE', '0000000000000000')
+    front = args.front or "tcp://180.168.146.187:10201"
+    if not front.startswith("tcp://"):
+        front = "tcp://" + front
+    user = UserConfig(brokerId, userId, password, appId, authCode)
     client = CTdClient(user, front)
     client.connect()
-    print(client.querySettlementInfo("20230215"))
+
+    if not args.date:
+        today: datetime.datetime = datetime.datetime.now()
+        yesterday: datetime.datetime = today - datetime.timedelta(days=1)
+        args.date = yesterday.strftime("%Y%m%d")
+    settlementInfoText = client.querySettlementInfo(args.date)
+
+    if args.raw:
+        print(settlementInfoText)
+    else:
+        parser = SettlementParser()
+        parsed = parser.parse(settlementInfoText)
+        print(json.dumps(parsed, indent=2, ensure_ascii=False))
