@@ -131,6 +131,7 @@ class CTdClient(api.CThostFtdcTraderSpi):
             _print(f"query settlement failed, ErrorID: {pRspInfo.ErrorID}, ErrorMsg: {pRspInfo.ErrorMsg}")
 
         if pSettlementInfo is not None:
+            _print(f"content: {pSettlementInfo.Content}")
             self.__queue.put_nowait((str(pSettlementInfo.Content), bIsLast))
         else:
             _print(f"empty settlement content, last={bIsLast}")
@@ -457,6 +458,7 @@ if __name__ == "__main__":
     parser.add_argument("--raw", dest="raw", action="store_true", default=False, required=False, help="Print raw settlement info instead of json format")
 
     args = parser.parse_args()
+    verbose = args.verbose
     # brokerId, userId, password, appId, authCode
     brokerId = args.brokerId or os.getenv("CTP_BROKER", "9999")
     userId = args.userId or os.getenv("CTP_USER", None)
