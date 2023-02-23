@@ -393,11 +393,8 @@ class SettlementParser(object):
     POSITIONS_DETAILS = 2
     POSITIONS = 3
 
-    def __init__(self, content: str, line_spliter="\r\n"):
-        self._content = content
-        self._content_lines = content.split(line_spliter)
-        self._status = SettlementParser.HEADER
-        self._parsed = dict()
+    def __init__(self, line_spliter="\r\n"):
+        self._line_spliter = line_spliter
         self._handlers: dict[str, SectionHandler] = {
             SettlementStatementHandler.TITLE: SettlementStatementHandler(),
             TransactionsHandler.TITLE: TransactionsHandler(),
@@ -405,34 +402,37 @@ class SettlementParser(object):
             PositionsDetailHandler.TITLE: PositionsDetailHandler(),
             PositionsHandler.TITLE: PositionsHandler()
         }
-        self._sections: dict[str, (int, int)] = {}
 
-    def parse(self):
-        self._split_to_section()
-        for title, section in self._sections.items():
+    def parse(self, content: str):
+        contentLines = content.split(self._line_spliter)
+        sections = self._split_to_section(contentLines)
+        parsed = dict()
+        for title, section in sections.items():
             start, end = section
             if title in self._handlers:
-                result = self._handlers[title].parse(self._content_lines[start:end])
-                self._parsed.update(result)
-        return self._parsed
+                result = self._handlers[title].parse(contentLines[start:end])
+                parsed.update(result)
+        return parsed
 
-    def _split_to_section(self):
+    def _split_to_section(self, contentLines: list[str]) -> dict[str, (int, int)]:
         section_start = 0
         current_section = None
+        sections: dict[str, (int, int)] = {}
         checked = {
             current_section: 1
         }
-        for i in range(len(self._content_lines)):
+        for i in range(len(contentLines)):
             for title in self._handlers.keys():
-                if title not in checked and self._content_lines[i].find(title) >= 0:
-                    self._sections[current_section] = (section_start, i)
+                if title not in checked and contentLines[i].find(title) >= 0:
+                    sections[current_section] = (section_start, i)
                     checked[title] = 1
                     current_section = title
                     section_start = i
                     break
         else:
-            if section_start < len(self._content_lines) and current_section not in self._sections:
-                self._sections[current_section] = (section_start, len(self._content_lines))
+            if section_start < len(contentLines) and current_section not in sections:
+                sections[current_section] = (section_start, len(contentLines))
+        return sections
 
 
 if __name__ == "__main__":

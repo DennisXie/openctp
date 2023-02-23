@@ -113,8 +113,8 @@ def testSettlementParser():
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 """
-    parser = SettlementParser(text, "\n")
-    result = parser.parse()
+    parser = SettlementParser("\n")
+    result = parser.parse(text)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 if __name__ == "__main__":
