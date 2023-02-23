@@ -458,12 +458,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # brokerId, userId, password, appId, authCode
-    brokerId = args.brokerId or os.getenv('CTP_BROKER', '9999')
-    userId = args.userId or os.getenv('CTP_USER', None)
-    password = args.password or os.getenv('CTP_PASSWORD', None)
-    appId = args.appId or os.getenv('CTP_APP_ID', 'simnow_client_test')
-    authCode = args.authCode or os.getenv('CTP_AUTH_CODE', '0000000000000000')
-    front = args.front or "tcp://180.168.146.187:10201"
+    brokerId = args.brokerId or os.getenv("CTP_BROKER", "9999")
+    userId = args.userId or os.getenv("CTP_USER", None)
+    password = args.password or os.getenv("CTP_PASSWORD", None)
+    appId = args.appId or os.getenv("CTP_APP_ID", "simnow_client_test")
+    authCode = args.authCode or os.getenv("CTP_AUTH_CODE", "0000000000000000")
+    front = args.front or os.getenv("CTP_TRADE_FRONT","tcp://180.168.146.187:10201")
     if not front.startswith("tcp://"):
         front = "tcp://" + front
     if not userId or not password:
